@@ -5,8 +5,12 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 
-from database import get_db, AgentLog
+from database import get_db
+from services import AgentLogService
+from core.constants import AgentName
+from core.logging import get_logger
 
+logger = get_logger(__name__)
 router = APIRouter()
 
 
@@ -27,6 +31,20 @@ class AgentLogResponse(BaseModel):
         from_attributes = True
 
 
+class AgentInfo(BaseModel):
+    """Agent information model."""
+    name: str
+    role: str
+    status: str
+    description: str
+
+
+class AgentsStatusResponse(BaseModel):
+    """Response model for agents status."""
+    agents: List[AgentInfo]
+    total: int
+
+
 @router.get("/logs", response_model=List[AgentLogResponse])
 async def get_agent_logs(
     project_id: Optional[int] = None,
@@ -35,60 +53,57 @@ async def get_agent_logs(
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    """Get agent activity logs."""
-    query = db.query(AgentLog)
-    
-    if project_id:
-        query = query.filter(AgentLog.project_id == project_id)
-    
-    if agent_name:
-        query = query.filter(AgentLog.agent_name == agent_name)
-    
-    logs = query.order_by(AgentLog.created_at.desc()).offset(skip).limit(limit).all()
+    """Get agent activity logs with optional filtering."""
+    agent_log_service = AgentLogService(db)
+    logs = agent_log_service.get_logs(
+        project_id=project_id,
+        agent_name=agent_name,
+        skip=skip,
+        limit=limit
+    )
     return logs
 
 
-@router.get("/status")
+@router.get("/status", response_model=AgentsStatusResponse)
 async def get_agents_status():
     """Get status of all available agents."""
-    return {
-        "agents": [
-            {
-                "name": "ProductManagerAgent",
-                "role": "Product Manager",
-                "status": "available",
-                "description": "Analyzes product ideas and creates PRD"
-            },
-            {
-                "name": "SoftwareArchitectAgent",
-                "role": "Software Architect",
-                "status": "available",
-                "description": "Designs system architecture and database schema"
-            },
-            {
-                "name": "BackendDeveloperAgent",
-                "role": "Backend Developer",
-                "status": "available",
-                "description": "Generates backend APIs and services"
-            },
-            {
-                "name": "FrontendDeveloperAgent",
-                "role": "Frontend Developer",
-                "status": "available",
-                "description": "Builds responsive frontend UI"
-            },
-            {
-                "name": "QATesterAgent",
-                "role": "QA Tester",
-                "status": "available",
-                "description": "Generates comprehensive tests"
-            },
-            {
-                "name": "CodeReviewerAgent",
-                "role": "Code Reviewer",
-                "status": "available",
-                "description": "Reviews and optimizes code"
-            }
-        ],
-        "total": 6
-    }
+    agents_info = [
+        AgentInfo(
+            name=AgentName.PRODUCT_MANAGER.value,
+            role="Product Manager",
+            status="available",
+            description="Analyzes product ideas and creates comprehensive PRD"
+        ),
+        AgentInfo(
+            name=AgentName.SOFTWARE_ARCHITECT.value,
+            role="Software Architect",
+            status="available",
+            description="Designs system architecture and database schema"
+        ),
+        AgentInfo(
+            name=AgentName.BACKEND_DEVELOPER.value,
+            role="Backend Developer",
+            status="available",
+            description="Generates backend APIs and services"
+        ),
+        AgentInfo(
+            name=AgentName.FRONTEND_DEVELOPER.value,
+            role="Frontend Developer",
+            status="available",
+            description="Builds responsive frontend UI with React/Next.js"
+        ),
+        AgentInfo(
+            name=AgentName.QA_TESTER.value,
+            role="QA Tester",
+            status="available",
+            description="Generates comprehensive test suites"
+        ),
+        AgentInfo(
+            name=AgentName.CODE_REVIEWER.value,
+            role="Code Reviewer",
+            status="available",
+            description="Reviews code quality and provides optimization suggestions"
+        )
+    ]
+    
+    return AgentsStatusResponse(agents=agents_info, total=len(agents_info))
