@@ -4,12 +4,26 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 from config import settings
+from core.logging import get_logger
 
-# Create engine
-engine = create_engine(
-    settings.database_url,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {}
-)
+logger = get_logger(__name__)
+
+# Create engine with connection pooling
+engine_kwargs = {
+    "connect_args": {"check_same_thread": False} if "sqlite" in settings.database_url else {},
+}
+
+# Add pooling configuration for non-SQLite databases
+if "sqlite" not in settings.database_url:
+    engine_kwargs.update({
+        "pool_size": settings.pool_size,
+        "max_overflow": settings.max_overflow,
+        "pool_timeout": settings.pool_timeout,
+        "pool_pre_ping": True,  # Verify connections before using
+        "pool_recycle": 3600,  # Recycle connections after 1 hour
+    })
+
+engine = create_engine(settings.database_url, **engine_kwargs)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -49,6 +63,7 @@ class AgentLog(Base):
 async def init_db():
     """Initialize database tables."""
     Base.metadata.create_all(bind=engine)
+    logger.info("Database tables initialized successfully")
 
 
 def get_db():
